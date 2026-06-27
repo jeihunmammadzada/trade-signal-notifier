@@ -17,6 +17,8 @@ const symbols = (process.env.SYMBOLS ?? "BTCUSDT,ETHUSDT,SOLUSDT")
   .filter(Boolean);
 
 const telegramEnabled = Boolean(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID);
+const telegramBotToken = process.env.TELEGRAM_BOT_TOKEN ?? "";
+const telegramChatId = process.env.TELEGRAM_CHAT_ID ?? "";
 
 const previousSignals = new Map<string, SignalRow>();
 let history: Array<{ symbol: string; signal: string; strength: string; price: number; timestamp: string; reasons: string[] }> = [];
@@ -61,9 +63,43 @@ function pushAlert(alert: { level: string; symbol: string; title: string; messag
   alerts = alerts.slice(0, 120);
 }
 
+async function sendTelegramAlerts(cycleAlerts: Array<{ level: string; symbol: string; title: string; message: string; timestamp: string }>) {
+  if (!telegramEnabled || cycleAlerts.length === 0) {
+    return;
+  }
+
+  const lines = ["Trade Signal Xeberdarliq", ""];
+  for (const item of cycleAlerts.slice(0, 8)) {
+    lines.push(`${item.symbol} | ${item.title}`);
+    lines.push(item.message);
+    lines.push(new Date(item.timestamp).toLocaleString("az-AZ"));
+    lines.push("");
+  }
+
+  const body = {
+    chat_id: telegramChatId,
+    text: lines.join("\n").trim(),
+    disable_web_page_preview: true,
+  };
+
+  const res = await fetch(`https://api.telegram.org/bot${telegramBotToken}/sendMessage`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Telegram gonderme xetasi: ${res.status} ${errText}`);
+  }
+}
+
 export async function GET() {
   try {
     const list: SignalRow[] = [];
+    const cycleAlerts: Array<{ level: string; symbol: string; title: string; message: string; timestamp: string }> = [];
 
     for (const symbol of symbols) {
       const { closes, timestamp } = await fetchCloses(symbol);
@@ -89,26 +125,32 @@ export async function GET() {
 
       if (prev) {
         if (prev.signal !== signal.signal) {
-          pushAlert({
+          const alert = {
             level: "INFO",
             symbol,
             title: "Siqnal deyisdi",
             message: `${prev.signal} -> ${signal.signal}`,
             timestamp,
-          });
+          };
+          pushAlert(alert);
+          cycleAlerts.push(alert);
         }
 
         if (signal.score >= prev.score + 2 && (signal.signal === "BUY" || signal.signal === "SELL")) {
-          pushAlert({
+          const alert = {
             level: signal.signal === "BUY" ? "GOOD" : "WARN",
             symbol,
             title: "Momentum guclendi",
             message: `Skor ${prev.score}-den ${signal.score}-e qalxdi`,
             timestamp,
-          });
+          };
+          pushAlert(alert);
+          cycleAlerts.push(alert);
         }
       }
     }
+
+    await sendTelegramAlerts(cycleAlerts);
 
     const buyCount = list.filter((x) => x.signal === "BUY").length;
     const sellCount = list.filter((x) => x.signal === "SELL").length;
