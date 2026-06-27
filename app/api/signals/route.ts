@@ -2,7 +2,13 @@ import { NextResponse } from "next/server";
 import { buildSignal } from "@/lib/signalEngine";
 import type { SignalRow } from "@/lib/types";
 
-const BASE_URL = "https://api.binance.com";
+const BINANCE_BASE_URLS = [
+  process.env.BINANCE_BASE_URL,
+  "https://data-api.binance.vision",
+  "https://api1.binance.com",
+  "https://api.binance.com",
+].filter(Boolean) as string[];
+
 const interval = process.env.INTERVAL ?? "15m";
 const lookback = Number(process.env.LOOKBACK ?? "200");
 const symbols = (process.env.SYMBOLS ?? "BTCUSDT,ETHUSDT,SOLUSDT")
@@ -17,20 +23,37 @@ let history: Array<{ symbol: string; signal: string; strength: string; price: nu
 let alerts: Array<{ level: string; symbol: string; title: string; message: string; timestamp: string }> = [];
 
 async function fetchCloses(symbol: string): Promise<{ closes: number[]; timestamp: string }> {
-  const url = new URL(`${BASE_URL}/api/v3/klines`);
-  url.searchParams.set("symbol", symbol);
-  url.searchParams.set("interval", interval);
-  url.searchParams.set("limit", String(lookback));
+  const tried: string[] = [];
 
-  const res = await fetch(url.toString(), { next: { revalidate: 0 } });
-  if (!res.ok) {
-    throw new Error(`Binance xetasi: ${res.status}`);
+  for (const baseUrl of BINANCE_BASE_URLS) {
+    const url = new URL(`${baseUrl}/api/v3/klines`);
+    url.searchParams.set("symbol", symbol);
+    url.searchParams.set("interval", interval);
+    url.searchParams.set("limit", String(lookback));
+
+    const res = await fetch(url.toString(), {
+      next: { revalidate: 0 },
+      headers: {
+        "user-agent": "trade-signal-notifier/1.0",
+      },
+    });
+
+    if (res.ok) {
+      const rows = (await res.json()) as Array<[number, string, string, string, string, string, number]>;
+      const closes = rows.map((r) => Number(r[4]));
+      const ts = rows.at(-1)?.[6] ?? Date.now();
+      return { closes, timestamp: new Date(ts).toISOString() };
+    }
+
+    tried.push(`${baseUrl} => ${res.status}`);
+
+    // 4xx except 451 generally means malformed input and retrying other hosts won't help much.
+    if (res.status >= 400 && res.status < 500 && res.status !== 451) {
+      throw new Error(`Binance xetasi: ${res.status}`);
+    }
   }
 
-  const rows = (await res.json()) as Array<[number, string, string, string, string, string, number]>;
-  const closes = rows.map((r) => Number(r[4]));
-  const ts = rows.at(-1)?.[6] ?? Date.now();
-  return { closes, timestamp: new Date(ts).toISOString() };
+  throw new Error(`Binance xetasi: fallback hostlar da islemedi (${tried.join(" | ")})`);
 }
 
 function pushAlert(alert: { level: string; symbol: string; title: string; message: string; timestamp: string }) {
