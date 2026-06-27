@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { buildSignal } from "@/lib/signalEngine";
+import { getActiveSubscriberIds } from "@/lib/subscribers-db";
 import type { SignalRow } from "@/lib/types";
 
 const BINANCE_BASE_URLS = [
@@ -24,7 +25,7 @@ const telegramChatIds = [
     .filter(Boolean),
   ...(process.env.TELEGRAM_CHAT_ID ? [process.env.TELEGRAM_CHAT_ID.trim()] : []),
 ].filter((v, i, arr) => arr.indexOf(v) === i);
-const telegramEnabled = Boolean(telegramBotToken && telegramChatIds.length > 0);
+const unique = <T,>(arr: T[]) => arr.filter((v, i) => arr.indexOf(v) === i);
 
 const previousSignals = new Map<string, SignalRow>();
 let history: Array<{ symbol: string; signal: string; strength: string; price: number; timestamp: string; reasons: string[] }> = [];
@@ -69,8 +70,11 @@ function pushAlert(alert: { level: string; symbol: string; title: string; messag
   alerts = alerts.slice(0, 120);
 }
 
-async function sendTelegramAlerts(cycleAlerts: Array<{ level: string; symbol: string; title: string; message: string; timestamp: string }>) {
-  if (!telegramEnabled || cycleAlerts.length === 0) {
+async function sendTelegramAlerts(
+  cycleAlerts: Array<{ level: string; symbol: string; title: string; message: string; timestamp: string }>,
+  recipients: string[],
+) {
+  if (!telegramBotToken || recipients.length === 0 || cycleAlerts.length === 0) {
     return;
   }
 
@@ -83,7 +87,7 @@ async function sendTelegramAlerts(cycleAlerts: Array<{ level: string; symbol: st
   }
 
   const text = lines.join("\n").trim();
-  const sends = telegramChatIds.map(async (chatId) => {
+  const sends = recipients.map(async (chatId) => {
     const res = await fetch(`https://api.telegram.org/bot${telegramBotToken}/sendMessage`, {
       method: "POST",
       headers: {
@@ -113,6 +117,9 @@ export async function GET() {
   try {
     const list: SignalRow[] = [];
     const cycleAlerts: Array<{ level: string; symbol: string; title: string; message: string; timestamp: string }> = [];
+    const dbSubscribers = getActiveSubscriberIds();
+    const telegramRecipients = unique([...telegramChatIds, ...dbSubscribers]);
+    const telegramEnabled = Boolean(telegramBotToken && telegramRecipients.length > 0);
 
     for (const symbol of symbols) {
       const { closes, timestamp } = await fetchCloses(symbol);
@@ -163,7 +170,7 @@ export async function GET() {
       }
     }
 
-    await sendTelegramAlerts(cycleAlerts);
+    await sendTelegramAlerts(cycleAlerts, telegramRecipients);
 
     const buyCount = list.filter((x) => x.signal === "BUY").length;
     const sellCount = list.filter((x) => x.signal === "SELL").length;
@@ -202,6 +209,7 @@ export async function GET() {
         dominant,
       },
       telegram_enabled: telegramEnabled,
+      telegram_subscriber_count: telegramRecipients.length,
     });
   } catch (error) {
     return NextResponse.json(
