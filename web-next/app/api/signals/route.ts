@@ -1,0 +1,134 @@
+import { NextResponse } from "next/server";
+import { buildSignal } from "@/lib/signalEngine";
+import type { SignalRow } from "@/lib/types";
+
+const BASE_URL = "https://api.binance.com";
+const interval = process.env.INTERVAL ?? "15m";
+const lookback = Number(process.env.LOOKBACK ?? "200");
+const symbols = (process.env.SYMBOLS ?? "BTCUSDT,ETHUSDT,SOLUSDT")
+  .split(",")
+  .map((s) => s.trim().toUpperCase())
+  .filter(Boolean);
+
+const telegramEnabled = Boolean(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID);
+
+const previousSignals = new Map<string, SignalRow>();
+let history: Array<{ symbol: string; signal: string; strength: string; price: number; timestamp: string; reasons: string[] }> = [];
+let alerts: Array<{ level: string; symbol: string; title: string; message: string; timestamp: string }> = [];
+
+async function fetchCloses(symbol: string): Promise<{ closes: number[]; timestamp: string }> {
+  const url = new URL(`${BASE_URL}/api/v3/klines`);
+  url.searchParams.set("symbol", symbol);
+  url.searchParams.set("interval", interval);
+  url.searchParams.set("limit", String(lookback));
+
+  const res = await fetch(url.toString(), { next: { revalidate: 0 } });
+  if (!res.ok) {
+    throw new Error(`Binance xetasi: ${res.status}`);
+  }
+
+  const rows = (await res.json()) as Array<[number, string, string, string, string, string, number]>;
+  const closes = rows.map((r) => Number(r[4]));
+  const ts = rows.at(-1)?.[6] ?? Date.now();
+  return { closes, timestamp: new Date(ts).toISOString() };
+}
+
+function pushAlert(alert: { level: string; symbol: string; title: string; message: string; timestamp: string }) {
+  alerts.unshift(alert);
+  alerts = alerts.slice(0, 120);
+}
+
+export async function GET() {
+  try {
+    const list: SignalRow[] = [];
+
+    for (const symbol of symbols) {
+      const { closes, timestamp } = await fetchCloses(symbol);
+      const signal = buildSignal(symbol, interval, closes, timestamp);
+      const prev = previousSignals.get(symbol);
+      previousSignals.set(symbol, signal);
+      list.push(signal);
+
+      if (signal.signal === "BUY" || signal.signal === "SELL") {
+        const prevSignal = prev?.signal;
+        if (prevSignal !== signal.signal) {
+          history.unshift({
+            symbol,
+            signal: signal.signal,
+            strength: signal.strength,
+            price: signal.snapshot.close_price,
+            timestamp,
+            reasons: signal.reasons,
+          });
+          history = history.slice(0, 100);
+        }
+      }
+
+      if (prev) {
+        if (prev.signal !== signal.signal) {
+          pushAlert({
+            level: "INFO",
+            symbol,
+            title: "Siqnal deyisdi",
+            message: `${prev.signal} -> ${signal.signal}`,
+            timestamp,
+          });
+        }
+
+        if (signal.score >= prev.score + 2 && (signal.signal === "BUY" || signal.signal === "SELL")) {
+          pushAlert({
+            level: signal.signal === "BUY" ? "GOOD" : "WARN",
+            symbol,
+            title: "Momentum guclendi",
+            message: `Skor ${prev.score}-den ${signal.score}-e qalxdi`,
+            timestamp,
+          });
+        }
+      }
+    }
+
+    const buyCount = list.filter((x) => x.signal === "BUY").length;
+    const sellCount = list.filter((x) => x.signal === "SELL").length;
+    const holdCount = list.filter((x) => x.signal === "HOLD").length;
+
+    let dominant = "HOLD";
+    if (buyCount > sellCount && buyCount >= holdCount) dominant = "BUY";
+    else if (sellCount > buyCount && sellCount >= holdCount) dominant = "SELL";
+
+    const opportunities = list
+      .filter((x) => x.signal !== "HOLD")
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 3)
+      .map((x) => ({
+        symbol: x.symbol,
+        signal: x.signal,
+        strength: x.strength,
+        score: x.score,
+        risk: x.risk_level,
+        stop_loss: x.stop_loss_range,
+        reason: x.reasons[0] ?? "Sebeb yoxdur",
+      }));
+
+    return NextResponse.json({
+      symbols,
+      interval,
+      last_updated: new Date().toISOString(),
+      signals: list,
+      history,
+      alerts,
+      opportunities,
+      market_pulse: {
+        buy_count: buyCount,
+        sell_count: sellCount,
+        hold_count: holdCount,
+        dominant,
+      },
+      telegram_enabled: telegramEnabled,
+    });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Unknown error" },
+      { status: 500 },
+    );
+  }
+}

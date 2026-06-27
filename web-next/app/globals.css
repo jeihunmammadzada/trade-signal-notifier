@@ -1,0 +1,65 @@
+:root {
+  --ink: #112129;
+  --muted: #5d6c76;
+  --card: rgba(255, 255, 255, 0.75);
+  --line: rgba(10, 42, 54, 0.12);
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: Sora, sans-serif;
+  color: var(--ink);
+  background: radial-gradient(circle at 20% 10%, #ffe8c7 0%, transparent 35%),
+    radial-gradient(circle at 90% 20%, #c7ecff 0%, transparent 35%),
+    linear-gradient(135deg, #f9f7f1 0%, #f2efe8 60%, #ece8df 100%);
+}
+.container { width: min(1120px, 92vw); margin: 2rem auto 3rem; }
+.hero h1 { margin: .3rem 0 .7rem; font-size: clamp(1.6rem, 3vw, 2.6rem); }
+.eyebrow { margin: 0; font-size: .78rem; text-transform: uppercase; letter-spacing: .12em; color: #78531e; }
+.sub { margin: 0; color: var(--muted); }
+.meta { display: flex; gap: .7rem; flex-wrap: wrap; margin-top: 1rem; }
+.meta span { border: 1px solid var(--line); border-radius: 999px; background: rgba(255,255,255,.58); padding: .44rem .7rem; font-size: .88rem; }
+.panel { margin-top: 1rem; border-radius: 18px; border: 1px solid var(--line); background: var(--card); backdrop-filter: blur(12px); box-shadow: 0 18px 55px rgba(18,35,41,.12); }
+.panel-head { display: flex; justify-content: space-between; align-items: center; padding: 1rem 1rem .6rem; }
+.panel-head h2 { margin: 0; font-size: 1.14rem; }
+.panel-actions { display: flex; gap: .5rem; }
+button { border: 0; border-radius: 10px; background: #0f556e; color: #f5fbff; font-weight: 600; padding: .55rem .9rem; cursor: pointer; }
+.helper-text { margin: 0; padding: 0 1rem .8rem; color: #4f616b; font-size: .9rem; }
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; min-width: 880px; }
+th, td { padding: .68rem .9rem; border-top: 1px solid var(--line); text-align: left; font-size: .9rem; }
+th { font-size: .76rem; text-transform: uppercase; letter-spacing: .09em; color: #5a6973; }
+.empty { color: var(--muted); }
+.badge { display: inline-block; border-radius: 999px; padding: .28rem .6rem; font-size: .76rem; font-weight: 700; }
+.badge-buy { color: #0d5e34; background: rgba(31,157,88,.2); }
+.badge-sell { color: #91281f; background: rgba(217,72,65,.2); }
+.badge-hold { color: #7e6110; background: rgba(179,139,18,.2); }
+.sparkline { width: 92px; height: 28px; display: block; }
+.action-cell { font-weight: 600; color: #213640; }
+.risk-pill { display: inline-block; border-radius: 999px; padding: .18rem .45rem; font-size: .72rem; font-weight: 700; }
+.risk-low { color: #0d5e34; background: rgba(31,157,88,.16); }
+.risk-medium { color: #7b5c08; background: rgba(179,139,18,.16); }
+.risk-high { color: #91281f; background: rgba(217,72,65,.16); }
+.detailed-only { display: none; }
+.show-detailed .detailed-only { display: table-cell; }
+.pulse-grid { display: grid; grid-template-columns: repeat(4, minmax(140px, 1fr)); gap: .8rem; padding: 0 1rem 1rem; }
+.pulse-card { border: 1px solid var(--line); border-radius: 12px; padding: .75rem; background: rgba(255,255,255,.6); }
+.pulse-card p { margin: 0; color: var(--muted); font-size: .84rem; }
+.pulse-card strong { display: block; margin-top: .35rem; font-size: 1.3rem; }
+.buy-card strong { color: #0d5e34; }
+.sell-card strong { color: #91281f; }
+.hold-card strong { color: #7e6110; }
+.opportunities { padding: 0 1rem 1rem; }
+.opportunities h3 { margin: 0 0 .5rem; font-size: .95rem; }
+.opportunities ul { margin: 0; padding-left: 1rem; }
+.alert-list { list-style: none; margin: 0; padding: .3rem 1rem 1rem; display: grid; gap: .6rem; }
+.alert-item { border: 1px solid var(--line); border-radius: 12px; padding: .7rem; background: rgba(255,255,255,.6); }
+.alert-item p { margin: 0; }
+.alert-item p + p { margin-top: .35rem; color: #354b56; }
+.alert-item small { display: inline-block; margin-top: .35rem; color: #5a6f79; }
+.alert-good { border-color: rgba(31,157,88,.35); }
+.alert-warn { border-color: rgba(217,72,65,.35); }
+.error { margin: 0; padding: .8rem 1rem 1rem; color: #922f2b; }
+@media (max-width: 760px) { .pulse-grid { grid-template-columns: repeat(2, minmax(120px, 1fr)); } }
