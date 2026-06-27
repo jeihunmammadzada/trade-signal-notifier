@@ -18,7 +18,9 @@ Sonra ac:
 
 ## Qeyd
 
-- Telegram alert ucun `.env.local` daxilinde `TELEGRAM_BOT_TOKEN` ve `TELEGRAM_CHAT_ID` doldur.
+- Telegram alert ucun `.env.local` daxilinde `TELEGRAM_BOT_TOKEN` yaz.
+- Bir nece adama gondermek ucun `TELEGRAM_CHAT_IDS` (vergulle ayri) istifade et.
+- Geriye uygunluq ucun tek chat da `TELEGRAM_CHAT_ID` ile isleyir.
 - Production ucun:
 
 ```bash

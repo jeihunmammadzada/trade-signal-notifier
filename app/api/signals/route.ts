@@ -16,9 +16,15 @@ const symbols = (process.env.SYMBOLS ?? "BTCUSDT,ETHUSDT,SOLUSDT")
   .map((s) => s.trim().toUpperCase())
   .filter(Boolean);
 
-const telegramEnabled = Boolean(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID);
 const telegramBotToken = process.env.TELEGRAM_BOT_TOKEN ?? "";
-const telegramChatId = process.env.TELEGRAM_CHAT_ID ?? "";
+const telegramChatIds = [
+  ...(process.env.TELEGRAM_CHAT_IDS ?? "")
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean),
+  ...(process.env.TELEGRAM_CHAT_ID ? [process.env.TELEGRAM_CHAT_ID.trim()] : []),
+].filter((v, i, arr) => arr.indexOf(v) === i);
+const telegramEnabled = Boolean(telegramBotToken && telegramChatIds.length > 0);
 
 const previousSignals = new Map<string, SignalRow>();
 let history: Array<{ symbol: string; signal: string; strength: string; price: number; timestamp: string; reasons: string[] }> = [];
@@ -76,23 +82,30 @@ async function sendTelegramAlerts(cycleAlerts: Array<{ level: string; symbol: st
     lines.push("");
   }
 
-  const body = {
-    chat_id: telegramChatId,
-    text: lines.join("\n").trim(),
-    disable_web_page_preview: true,
-  };
+  const text = lines.join("\n").trim();
+  const sends = telegramChatIds.map(async (chatId) => {
+    const res = await fetch(`https://api.telegram.org/bot${telegramBotToken}/sendMessage`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text,
+        disable_web_page_preview: true,
+      }),
+    });
 
-  const res = await fetch(`https://api.telegram.org/bot${telegramBotToken}/sendMessage`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-    },
-    body: JSON.stringify(body),
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`chat ${chatId}: ${res.status} ${errText}`);
+    }
   });
 
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`Telegram gonderme xetasi: ${res.status} ${errText}`);
+  const results = await Promise.allSettled(sends);
+  const failed = results.filter((r) => r.status === "rejected");
+  if (failed.length > 0) {
+    console.warn(`Telegram gondermede xeta: ${failed.length}/${results.length}`);
   }
 }
 
